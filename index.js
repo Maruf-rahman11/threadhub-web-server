@@ -50,7 +50,8 @@ async function run() {
 
         const postsCollection = client.db("threadHubDB").collection("posts");
         const usersCollection = client.db("threadHubDB").collection("users");
-        const announcementsCollection = client.db("threadHubDB").collection("announcements");
+        const announcementCollection = client.db("threadHubDB").collection("announcements");
+        
 
 
 
@@ -149,6 +150,28 @@ app.patch("/posts/upvote/:id", async (req, res) => {
       res.status(500).send({ message: "Server error" });
     }
   });
+  // app.post("/announcements", async (req, res) => {
+  //   const { title, message, createdBy } = req.body;
+
+  //   if (!title || !message || !createdBy) {
+  //     return res.status(400).send({ message: "All fields are required" });
+  //   }
+
+  //   const newAnnouncement = {
+  //     title,
+  //     message,
+  //     createdBy,
+  //     created_at: new Date().toISOString(),
+  //   };
+
+  //   try {
+  //     const result = await announcementCollection.insertOne(newAnnouncement);
+  //     res.send({ insertedId: result.insertedId });
+  //   } catch (err) {
+  //     console.error(err);
+  //     res.status(500).send({ message: "Failed to create announcement" });
+  //   }
+  // });
 
   app.post("/create-payment-intent", async (req, res) => {
     const { amount, currency = "usd" } = req.body; // amount in cents
@@ -179,7 +202,7 @@ app.patch("/posts/upvote/:id", async (req, res) => {
         created_at: new Date(),
       };
   
-      const result = await announcementsCollection.insertOne(newAnnouncement);
+      const result = await announcementCollection.insertOne(newAnnouncement);
       res.send({ insertedId: result.insertedId });
     } catch (err) {
       console.error(err);
@@ -223,6 +246,27 @@ app.patch("/posts/upvote/:id", async (req, res) => {
       res.status(500).send({ message: "Server error" });
     }
   });
+  // ✅ Get comments of a post by post ID
+app.get("/posts/comments/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const post = await postsCollection.findOne(
+      { _id: new ObjectId(id) },
+      { projection: { comments: 1 } } // only return comments field
+    );
+
+    if (!post) {
+      return res.status(404).send({ message: "Post not found" });
+    }
+
+    res.send(post.comments || []); // return comments array or empty array if none
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
   // Add this inside your `run()` function after defining `postsCollection`
 
 app.post("/posts", async (req, res) => {
@@ -264,6 +308,35 @@ app.post("/posts", async (req, res) => {
       res.status(500).send({ message: "Error adding post" });
     }
   });
+  // Add a new user
+app.post("/users", async (req, res) => {
+  const userData = req.body; // expecting { name, email, status, photoURL, etc. }
+
+  if (!userData?.email) {
+    return res.status(400).send({ message: "Email is required" });
+  }
+
+  try {
+    // Check if user already exists
+    const existingUser = await usersCollection.findOne({ email: userData.email });
+    if (existingUser) {
+      return res.status(409).send({ message: "User already exists" });
+    }
+
+    // Insert new user
+    const result = await usersCollection.insertOne({
+      ...userData,
+      status: userData.status || "bronze", // default status
+      created_at: new Date().toISOString(),
+    });
+
+    res.send({ insertedId: result.insertedId, message: "User created successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
   
   
   // ----------------------
@@ -271,14 +344,14 @@ app.post("/posts", async (req, res) => {
   // ----------------------
   app.get("/announcements", async (req, res) => {
     try {
-      const announcements = await announcementsCollection
+      const announcements = await announcementCollection
         .find({})
-        .sort({ created_at: -1 }) // newest first
+        .sort({ created_at: -1 }) // latest first
         .toArray();
       res.send(announcements);
     } catch (err) {
       console.error(err);
-      res.status(500).send({ message: "Error fetching announcements" });
+      res.status(500).send({ message: "Failed to fetch announcements" });
     }
   });
   app.get("/posts", async (req, res) => {
@@ -343,6 +416,34 @@ app.post("/posts", async (req, res) => {
       res.status(500).send({ message: "Server error" });
     }
   });
+// DELETE a post by ID
+app.delete("/posts/:id", async (req, res) => {
+  const id = req.params.id;
+
+  try {
+    const result = await postsCollection.deleteOne({ _id: new ObjectId(id) });
+    res.send({ message: "Post deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting post:", error);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+// DELETE /announcements/:id
+app.delete("/announcements/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await announcementCollection.deleteOne({ _id: new ObjectId(id) });
+    if (result.deletedCount === 0) {
+      return res.status(404).send({ message: "Announcement not found" });
+    }
+    res.send({ deletedCount: result.deletedCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+
        
 
 
